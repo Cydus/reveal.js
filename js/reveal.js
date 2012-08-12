@@ -1,9 +1,9 @@
 /*!
- * reveal.js 1.5 r11
+ * reveal.js 2.0 r18
  * http://lab.hakim.se/reveal-js
  * MIT licensed
  * 
- * Copyright (C) 2012 Hakim El Hattab, http://hakim.se
+ * Copyright (C) 2011-2012 Hakim El Hattab, http://hakim.se
  */
 var Reveal = (function(){
 	
@@ -39,11 +39,11 @@ var Reveal = (function(){
 			// Apply a 3D roll to links on hover
 			rollingLinks: true,
 
-			// UI style
-			theme: 'default', // default/neon/beige
-
 			// Transition style
-			transition: 'default' // default/cube/page/concave/linear(2d)
+			transition: 'default', // default/cube/page/concave/linear(2d),
+
+			// Script dependencies to load
+			dependencies: []
 		},
 
 		// The horizontal and verical index of the currently active slide
@@ -74,9 +74,6 @@ var Reveal = (function(){
                         		'msTransform' in document.body.style ||
                         		'OTransform' in document.body.style ||
                         		'transform' in document.body.style,
-
-        // Detect support for elem.classList
-        supportsClassList = !!document.body.classList;
 		
 		// Throttles mouse wheel navigation
 		mouseWheelTimeout = 0,
@@ -99,12 +96,10 @@ var Reveal = (function(){
 	
 	
 	/**
-	 * Starts up the slideshow by applying configuration
-	 * options and binding various events.
+	 * Starts up the presentation if the client is capable.
 	 */
 	function initialize( options ) {
-		
-		if( ( !supports2DTransforms && !supports3DTransforms ) || !supportsClassList ) {
+		if( ( !supports2DTransforms && !supports3DTransforms ) ) {
 			document.body.setAttribute( 'class', 'no-transforms' );
 
 			// If the browser doesn't support core features we won't be 
@@ -112,11 +107,14 @@ var Reveal = (function(){
 			return;
 		}
 
+		// Copy options over to our config object
+		extend( config, options );
+
 		// Cache references to DOM elements
 		dom.wrapper = document.querySelector( '.reveal' );
 		dom.progress = document.querySelector( '.reveal .progress' );
 		dom.progressbar = document.querySelector( '.reveal .progress span' );
-		
+
 		if ( config.controls ) {
 			dom.controls = document.querySelector( '.reveal .controls' );
 			dom.controlsLeft = document.querySelector( '.reveal .controls .left' );
@@ -125,19 +123,8 @@ var Reveal = (function(){
 			dom.controlsDown = document.querySelector( '.reveal .controls .down' );
 		}
 
-		addEventListeners();
-
-		// Copy options over to our config object
-		extend( config, options );
-
-		// Updates the presentation to match the current configuration values
-		configure();
-
-		// Read the initial hash
-		readURL();
-
-		// Start auto-sliding if it's enabled
-		cueAutoSlide();
+		// Loads the dependencies and continues to #start() once done
+		load();
 
 		// Set up hiding of the browser address bar
 		if( navigator.userAgent.match( /(iphone|ipod|android)/i ) ) {
@@ -152,9 +139,78 @@ var Reveal = (function(){
 		
 	}
 
+	/**
+	 * Loads the dependencies of reveal.js. Dependencies are 
+	 * defined via the configuration option 'dependencies' 
+	 * and will be loaded prior to starting/binding reveal.js. 
+	 * Some dependencies may have an 'async' flag, if so they 
+	 * will load after reveal.js has been started up.
+	 */
+	function load() {
+		var scripts = [],
+			scriptsAsync = [];
+
+		for( var i = 0, len = config.dependencies.length; i < len; i++ ) {
+			var s = config.dependencies[i];
+
+			// Load if there's no condition or the condition is truthy
+			if( !s.condition || s.condition() ) {
+				if( s.async ) {
+					scriptsAsync.push( s.src );
+				}
+				else {
+					scripts.push( s.src );
+				}
+
+				// Extension may contain callback functions
+				if( typeof s.callback === 'function' ) {
+					head.ready( s.src.match( /([\w\d_-]*)\.?[^\\\/]*$/i )[0], s.callback );
+				}
+			}
+		}
+
+		// Called once synchronous scritps finish loading
+		function proceed() {
+			// Load asynchronous scripts
+			head.js.apply( null, scriptsAsync );
+			
+			start();
+		}
+
+		if( scripts.length ) {
+			head.ready( proceed );
+
+			// Load synchronous scripts
+			head.js.apply( null, scripts );
+		}
+		else {
+			proceed();
+		}
+	}
+
+	/**
+	 * Starts up reveal.js by binding input events and navigating 
+	 * to the current URL deeplink if there is one.
+	 */
+	function start() {
+		// Subscribe to input
+		addEventListeners();
+
+		// Updates the presentation to match the current configuration values
+		configure();
+
+		// Read the initial hash
+		readURL();
+
+		// Start auto-sliding if it's enabled
+		cueAutoSlide();
+	}
+
+	/**
+	 * Applies the configuration settings from the config object.
+	 */
 	function configure() {
 		if( supports3DTransforms === false ) {
-			// Fall back on the 2D transform theme 'linear'
 			config.transition = 'linear';
 		}
 
@@ -168,10 +224,6 @@ var Reveal = (function(){
 
 		if( config.transition !== 'default' ) {
 			dom.wrapper.classList.add( config.transition );
-		}
-
-		if( config.theme !== 'default' ) {
-			document.documentElement.classList.add( 'theme-' + config.theme );
 		}
 
 		if( config.mouseWheel ) {
